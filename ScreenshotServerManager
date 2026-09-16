@@ -1,0 +1,15 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local screenshotEvent = ReplicatedStorage:FindFirstChild("ScreenshotEvent")
+if not screenshotEvent then
+	screenshotEvent = Instance.new("RemoteEvent")
+	screenshotEvent.Name = "ScreenshotEvent"
+	screenshotEvent.Parent = ReplicatedStorage
+end
+
+screenshotEvent.OnServerEvent:Connect(function(player: Player, actionType: string)
+	if actionType == "Capture" then
+		print("Player " .. player.Name .. " successfully took a screenshot!")
+	end
+end)
