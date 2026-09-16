@@ -1,0 +1,60 @@
+-->> Variables
+local UiEffectsModule = {}
+
+local TweenService = game:GetService("TweenService")
+local TWEEN_INFO_FAST = TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out)
+local TWEEN_INFO_SMOOTH = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+function UiEffectsModule.ApplyHoverScale(button: TextButton, defaultScale: Vector2, hoverScale: Vector2)
+	local uiScale = button:FindFirstChildOfClass("UIScale") :: UIScale?
+
+	if not uiScale then
+		local newScale = Instance.new("UIScale")
+		newScale.Parent = button
+		uiScale = newScale
+	end
+
+	local activeScale = uiScale :: UIScale
+
+	button.MouseEnter:Connect(function()
+		TweenService:Create(activeScale, TWEEN_INFO_FAST, {Scale = hoverScale.X}):Play()
+	end)
+
+	button.MouseLeave:Connect(function()
+		TweenService:Create(activeScale, TWEEN_INFO_FAST, {Scale = defaultScale.X}):Play()
+	end)
+end
+
+function UiEffectsModule.ToggleFrame(frame: Frame, visible: boolean, targetSize: UDim2)
+	local uiScale = frame:FindFirstChildOfClass("UIScale") :: UIScale?
+
+	if not uiScale then
+		local newScale = Instance.new("UIScale")
+		newScale.Parent = frame
+		uiScale = newScale
+	end
+
+	local activeScale = uiScale :: UIScale
+
+	if visible then
+		frame.Size = targetSize
+		frame.BackgroundTransparency = 1
+		activeScale.Scale = 0.7
+		frame.Visible = true
+
+		TweenService:Create(frame, TWEEN_INFO_SMOOTH, {BackgroundTransparency = 0.1}):Play()
+		TweenService:Create(activeScale, TWEEN_INFO_SMOOTH, {Scale = 1}):Play()
+	else
+		local tweenScale = TweenService:Create(activeScale, TWEEN_INFO_FAST, {Scale = 0.7})
+		local tweenFade = TweenService:Create(frame, TWEEN_INFO_FAST, {BackgroundTransparency = 1})
+
+		tweenScale:Play()
+		tweenFade:Play()
+
+		tweenScale.Completed:Connect(function()
+			frame.Visible = false
+		end)
+	end
+end
+
+return UiEffectsModule
