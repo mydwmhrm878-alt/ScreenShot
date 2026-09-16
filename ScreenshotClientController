@@ -1,0 +1,262 @@
+-->> Variables
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
+
+local Player = Players.LocalPlayer :: Player
+local Camera = Workspace.CurrentCamera :: Camera
+
+local UiEffectsModule = require(ReplicatedStorage:WaitForChild("UiEffectsModule") :: ModuleScript) :: any
+local ScreenshotEvent = ReplicatedStorage:WaitForChild("ScreenshotEvent") :: RemoteEvent
+
+local ScreenGui = script.Parent :: ScreenGui
+local MainButton = ScreenGui:WaitForChild("MainButton") :: TextButton
+local GalleryButton = ScreenGui:WaitForChild("GalleryButton") :: TextButton
+local OptionsFrame = ScreenGui:WaitForChild("OptionsFrame") :: Frame
+local FullScreenBtn = OptionsFrame:WaitForChild("FullScreenBtn") :: TextButton
+local SelectionBtn = OptionsFrame:WaitForChild("SelectionBtn") :: TextButton
+local SelectionBox = ScreenGui:WaitForChild("SelectionBox") :: Frame
+local GalleryFrame = ScreenGui:WaitForChild("GalleryFrame") :: Frame
+local ScrollGui = GalleryFrame:WaitForChild("ScrollGui") :: ScrollingFrame
+
+local PopupFrame = ScreenGui:WaitForChild("PopupFrame") :: Frame
+local ClosePopup = PopupFrame:WaitForChild("ClosePopup") :: TextButton
+
+local OPTIONS_SIZE: UDim2 = UDim2.new(0, 220, 0, 110)
+local GALLERY_SIZE: UDim2 = UDim2.new(0, 550, 0, 380)
+local POPUP_SIZE: UDim2 = UDim2.new(0, 800, 0, 600)
+
+UiEffectsModule.ApplyHoverScale(MainButton, Vector2.new(1,1), Vector2.new(1.15, 1.15))
+UiEffectsModule.ApplyHoverScale(GalleryButton, Vector2.new(1,1), Vector2.new(1.15, 1.15))
+UiEffectsModule.ApplyHoverScale(FullScreenBtn, Vector2.new(1,1), Vector2.new(1.05, 1.05))
+UiEffectsModule.ApplyHoverScale(SelectionBtn, Vector2.new(1,1), Vector2.new(1.05, 1.05))
+UiEffectsModule.ApplyHoverScale(ClosePopup, Vector2.new(1,1), Vector2.new(1.1, 1.1))
+
+
+local function createFakeSkybox(parent: ViewportFrame, camCFrame: CFrame)
+	local oldSky = parent:FindFirstChild("FakeSkybox")
+	if oldSky then oldSky:Destroy() end
+
+	local realSkyColor = Color3.fromRGB(116, 177, 219)
+
+	parent.BackgroundTransparency = 0
+	parent.BackgroundColor3 = realSkyColor
+end
+
+local function applyProfessionalLighting(viewport: ViewportFrame)
+	viewport.Ambient = Color3.fromRGB(175, 185, 195)
+
+	viewport.LightColor = Color3.fromRGB(255, 255, 250)
+
+	viewport.LightDirection = Vector3.new(0.4, -1, -0.4)
+end
+
+local function captureScene(size: UDim2, position: UDim2, isSelection: boolean): ViewportFrame
+	local viewportFrame = Instance.new("ViewportFrame")
+	viewportFrame.Size = size
+	viewportFrame.Position = position
+
+	local viewCam = Instance.new("Camera")
+	viewCam.CFrame = Camera.CFrame
+	viewCam.FieldOfView = Camera.FieldOfView
+
+	if isSelection then
+		local screenScaleX = size.X.Offset / Camera.ViewportSize.X
+		local screenScaleY = size.Y.Offset / Camera.ViewportSize.Y
+		local finalScale = math.max(screenScaleX, screenScaleY)
+		if finalScale > 0 then
+			viewCam.FieldOfView = math.clamp(Camera.FieldOfView * finalScale, 1, 120)
+		end
+	end
+
+	viewCam.Parent = viewportFrame
+	viewportFrame.CurrentCamera = viewCam
+
+	createFakeSkybox(viewportFrame, viewCam.CFrame)
+	applyProfessionalLighting(viewportFrame)
+
+	local playerName: string = Player.Name
+	for _, object in ipairs(Workspace:GetChildren()) do
+		if object:IsA("BasePart") or object:IsA("Model") or object:IsA("Folder") then
+			if not object:IsA("Terrain") and object.Name ~= playerName and object.Name ~= "FakeSkybox" and object.Name ~= "Camera" then
+
+				local clone: Instance? = nil
+				local success, err = pcall(function()
+					object.Archivable = true
+					clone = object:Clone()
+				end)
+
+				if success and clone then
+					clone.Parent = viewportFrame
+				end
+			end 
+		end
+	end
+
+	local character: Model? = Player.Character :: Model?
+	if character then
+		local activeCharacter = character :: Model
+		local charClone: Model? = nil
+
+		local success, err = pcall(function()
+			activeCharacter.Archivable = true
+			charClone = activeCharacter:Clone() :: Model
+		end)
+
+		if success and charClone then
+			local rootPart = activeCharacter:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local cloneRoot = charClone:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if rootPart and cloneRoot then
+				cloneRoot.CFrame = rootPart.CFrame
+			end
+
+			charClone.Parent = viewportFrame
+		end
+	end
+
+	return viewportFrame
+end
+
+local function saveToGallery(viewportFrame: ViewportFrame)
+	local card = Instance.new("Frame")
+	card.BackgroundColor3 = Color3.fromRGB(24, 24, 26)
+	card.BorderSizePixel = 0
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = card
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(45, 45, 50)
+	stroke.Thickness = 1
+	stroke.Parent = card
+
+	viewportFrame.Size = UDim2.new(1, -12, 1, -12)
+	viewportFrame.Position = UDim2.new(0, 6, 0, 6)
+	viewportFrame.Parent = card
+
+	local clickBtn = Instance.new("TextButton")
+	clickBtn.Size = UDim2.new(1, 0, 1, 0)
+	clickBtn.BackgroundTransparency = 1
+	clickBtn.Text = ""
+	clickBtn.Parent = card
+
+	clickBtn.MouseButton1Click:Connect(function()
+		local oldView = PopupFrame:FindFirstChildOfClass("ViewportFrame")
+		if oldView then oldView:Destroy() end
+
+		local bigView = viewportFrame:Clone()
+		bigView.Size = UDim2.new(1, -40, 1, -80)
+		bigView.Position = UDim2.new(0, 20, 0, 60)
+
+		local currentCam = bigView.CurrentCamera :: Camera
+		if currentCam then
+			createFakeSkybox(bigView, currentCam.CFrame)
+		end
+
+		applyProfessionalLighting(bigView)
+
+		bigView.Parent = PopupFrame
+		UiEffectsModule.ToggleFrame(PopupFrame, true, POPUP_SIZE)
+	end)
+
+	local deleteBtn = Instance.new("TextButton")
+	deleteBtn.Size = UDim2.new(0, 24, 0, 24)
+	deleteBtn.Position = UDim2.new(1, -28, 0, 4)
+	deleteBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	deleteBtn.BackgroundTransparency = 0.3
+	deleteBtn.Text = "×"
+	deleteBtn.TextColor3 = Color3.fromRGB(255, 85, 85)
+	deleteBtn.TextSize = 18
+	deleteBtn.Font = Enum.Font.GothamBold
+	deleteBtn.ZIndex = 5
+	deleteBtn.Parent = card
+
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(1, 0)
+	btnCorner.Parent = deleteBtn
+
+	deleteBtn.MouseButton1Click:Connect(function()
+		card:Destroy()
+	end)
+
+	card.Parent = ScrollGui
+	ScreenshotEvent:FireServer("Capture")
+end
+
+MainButton.MouseButton1Click:Connect(function()
+	local targetState = not OptionsFrame.Visible
+	UiEffectsModule.ToggleFrame(OptionsFrame, targetState, OPTIONS_SIZE)
+	if targetState and GalleryFrame.Visible then
+		UiEffectsModule.ToggleFrame(GalleryFrame, false, GALLERY_SIZE)
+	end
+end)
+
+GalleryButton.MouseButton1Click:Connect(function()
+	local targetState = not GalleryFrame.Visible
+	UiEffectsModule.ToggleFrame(GalleryFrame, targetState, GALLERY_SIZE)
+	if targetState and OptionsFrame.Visible then
+		UiEffectsModule.ToggleFrame(OptionsFrame, false, OPTIONS_SIZE)
+	end
+end)
+
+ClosePopup.MouseButton1Click:Connect(function()
+	UiEffectsModule.ToggleFrame(PopupFrame, false, POPUP_SIZE)
+end)
+
+FullScreenBtn.MouseButton1Click:Connect(function()
+	UiEffectsModule.ToggleFrame(OptionsFrame, false, OPTIONS_SIZE)
+	task.wait(0.2)
+	local capturedView = captureScene(UDim2.new(1, 0, 1, 0), UDim2.new(0, 0, 0, 0), false)
+	saveToGallery(capturedView)
+end)
+
+SelectionBtn.MouseButton1Click:Connect(function()
+	UiEffectsModule.ToggleFrame(OptionsFrame, false, OPTIONS_SIZE)
+	SelectionBox.Visible = false
+
+	local UserInputService = game:GetService("UserInputService")
+	local startPos: Vector2
+	local isSelecting = false
+
+	local inputBeganConn: RBXScriptConnection
+	local inputChangedConn: RBXScriptConnection
+	local inputEndedConn: RBXScriptConnection
+
+	inputBeganConn = UserInputService.InputBegan:Connect(function(input, gpe)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			startPos = UserInputService:GetMouseLocation()
+			SelectionBox.Position = UDim2.new(0, startPos.X, 0, startPos.Y - 36)
+			SelectionBox.Size = UDim2.new(0, 0, 0, 0)
+			SelectionBox.Visible = true
+			isSelecting = true
+		end
+	end)
+
+	inputChangedConn = UserInputService.InputChanged:Connect(function(input)
+		if isSelecting and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local currentPos = UserInputService:GetMouseLocation()
+			local sizeX = currentPos.X - startPos.X
+			local sizeY = currentPos.Y - startPos.Y
+			SelectionBox.Size = UDim2.new(0, sizeX, 0, sizeY)
+		end
+	end)
+
+	inputEndedConn = UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 and isSelecting then
+			isSelecting = false
+			SelectionBox.Visible = false
+
+			inputBeganConn:Disconnect()
+			inputChangedConn:Disconnect()
+			inputEndedConn:Disconnect()
+
+			local finalSize = SelectionBox.Size
+			local finalPos = SelectionBox.Position
+
+			local capturedView = captureScene(finalSize, finalPos, true)
+			saveToGallery(capturedView)
+		end
+	end)
+end)
